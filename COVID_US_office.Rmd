@@ -1,0 +1,168 @@
+---
+title: "COVID-19 Analysis"
+author: "`r praise::praise('${Adjective} Actuary')`"
+date: "`r lubridate::today()`"
+output: 
+    powerpoint_presentation:
+    word_document:
+        toc: true
+params:
+    states: "All"
+editor_options: 
+  chunk_output_type: console
+---
+
+> Data from the COVID-19 Data Repository by the Center for Systems Science and 
+> Engineering (CSSE) at Johns Hopkins University. See https://github.com/CSSEGISandData/COVID-19 
+> for the raw data and additional information on sources. 
+> Click [here](https://www.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6)
+> to access the JHU CSSE COVID-19 Visual Dashboard.
+
+
+*This analysis applies to `r if(params$states[[1]] == "All") "all states" else glue::glue_collapse(params$states, sep = ", ", last = ", and ")`.*
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, 
+                      fig.height = 6, fig.width = 8)
+
+library(tidyverse)
+library(lubridate)
+library(gghighlight)
+
+# read in data
+# if you don't have a copy of this file, run the script "download_cleanup.R"
+dat <- readRDS("covid19-us.rds")
+
+if (params$states[[1]] != "All") dat <- filter(dat, State %in% params$states)
+
+# color theme
+soa_colors <- rgb(
+    c(  2, 119, 210, 253, 186, 226),
+    c( 77, 196,  49, 206, 191, 127),
+    c(124, 213,  56,   7,  51,  38),
+    maxColorValue = 255
+)
+
+
+# plotting theme
+theme_set(theme_light() + 
+              theme(strip.background = element_rect(fill = soa_colors[[1]]))
+)
+
+
+scale_color_soa <- function (...) {
+    scale_color_manual(values = soa_colors, ...)
+}
+
+prep <- function(dat) {
+    dat %>%
+        group_by(cal_date, .add = TRUE) %>%
+        summarize(Cases = sum(tot_cases),
+                  Deaths = sum(tot_deaths),
+                  `Crude Mortality` = sum(tot_deaths) / sum(tot_cases),
+                  `Crude Infection Rate` = sum(tot_cases) / sum(Population),
+                  .groups = "drop") %>%
+        pivot_longer(c("Cases", "Deaths", 
+                       "Crude Mortality", "Crude Infection Rate"), 
+                     names_to = "metric", 
+                     values_to = "value") %>% 
+        drop_na(value)
+}
+
+```
+
+```{r highlevel-stats}
+total_infections <- sum(dat$cases)
+total_deaths <- sum(dat$deaths)
+total_population <- dat %>% filter(cal_date == max(cal_date)) %>% 
+  pull(Population) %>% sum()
+infection_rate <- total_infections / total_population
+fatality_rate <- total_deaths / total_infections
+```
+
+## Summary Stats:
+
+**Total infections**: `r scales::comma(total_infections)`
+
+**Total deaths**: `r scales::comma(total_deaths)`
+
+**Infection rate**: `r scales::percent(infection_rate, accuracy = 0.1)`
+
+**Case fatality rate**: `r scales::percent(fatality_rate, accuracy = 0.1)`
+
+
+# USA Cases and Deaths {.tabset}
+
+## Totals
+
+```{r counts-all}
+
+dat_all <- prep(dat)
+
+dat_all %>%
+    filter(metric %in% c("Cases", "Deaths")) %>% 
+    ggplot(aes(cal_date, value)) +
+    geom_line(lwd = 1.05) +
+    scale_y_continuous(labels = scales::comma) +
+    facet_wrap(~ metric, scales = "free_y") + 
+    labs(x = "Date", y = "Count")
+
+```
+
+## Crude Infection and Mortality
+
+```{r rates-all}
+
+dat_all %>%
+    filter(str_detect(metric, "^Crude")) %>% 
+    ggplot(aes(cal_date, value)) +
+    geom_line(lwd = 0.9) +
+    scale_y_continuous(labels = scales::percent) +
+    facet_wrap(~ metric, scales = "free_y") + 
+    labs(x = "Date", y = "Cumulative Rate")
+
+```
+
+
+
+# State Cases and Deaths {.tabset}
+
+## Totals
+
+```{r counts-states}
+
+dat_state <- dat %>% group_by(State) %>% prep()
+
+dat_state %>%
+    filter(metric %in% c("Cases", "Deaths")) %>% 
+    ggplot(aes(cal_date, value, color = State, group = State)) +
+    geom_line(size = 1.1) +
+    gghighlight(max(value), max_highlight = 6, 
+                calculate_per_facet = TRUE, 
+                unhighlighted_params = list(size = 0.9, alpha = 0.5)) + 
+    scale_y_continuous(labels = scales::comma) +
+    facet_wrap(~ metric, scales = "free_y") + 
+    labs(x = "Date", y = "Count") + 
+    scale_color_soa()
+
+```
+
+
+## Crude Infection and Mortality
+
+```{r rates-states}
+
+dat_state %>%
+    filter(str_detect(metric, "^Crude")) %>% 
+    ggplot(aes(cal_date, value, color = State)) +
+    geom_line(lwd = 1.1) +
+    gghighlight(max(mean(value)), max_highlight = 6, 
+                calculate_per_facet = TRUE, 
+                unhighlighted_params = list(size = 0.9, alpha = 0.5)) + 
+    scale_y_continuous(labels = scales::percent) +
+    facet_wrap(~ metric, scales = "free_y") + 
+    labs(x = "Date", y = "Cumulative Rate") + 
+    scale_color_soa()
+
+```

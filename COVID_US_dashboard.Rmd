@@ -1,0 +1,276 @@
+---
+title: "COVID-19 Analysis"
+author: "`r praise::praise('${Adjective} Actuary')`"
+date: "`r lubridate::today()`"
+output: 
+    flexdashboard::flex_dashboard:
+        theme: cerulean
+        orientation: rows
+        vertical_layout: scroll
+params:
+    states: "All"
+editor_options: 
+  chunk_output_type: console
+---
+
+Overview
+=========================
+
+Row {data-height=100}
+--------------------------------
+
+### Source Data
+
+> Data from the COVID-19 Data Repository by the Center for Systems Science and 
+> Engineering (CSSE) at Johns Hopkins University. See https://github.com/CSSEGISandData/COVID-19 
+> for the raw data and additional information on sources. 
+> Click [here](https://www.arcgis.com/apps/opsdashboard/index.html#/bda7594740fd40299423467b48e9ecf6)
+> to access the JHU CSSE COVID-19 Visual Dashboard.
+
+Row {data-height=100}
+--------------------------------
+
+### Scope
+
+*This analysis applies to `r if(params$states[[1]] == "All") "all states" else glue::glue_collapse(params$states, sep = ", ", last = ", and ")`.*
+
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+
+library(tidyverse)
+library(lubridate)
+library(gghighlight)
+library(flexdashboard)
+
+# read in data
+# if you don't have a copy of this file, run the script "download_cleanup.R"
+dat <- readRDS("covid19-us.rds")
+
+if (params$states[[1]] != "All") dat <- filter(dat, State %in% params$states)
+
+# color theme
+soa_colors <- rgb(
+    c(  2, 119, 210, 253, 186, 226),
+    c( 77, 196,  49, 206, 191, 127),
+    c(124, 213,  56,   7,  51,  38),
+    maxColorValue = 255
+)
+
+
+# plotting theme
+theme_set(theme_light() + 
+              theme(strip.background = element_rect(fill = soa_colors[[1]]))
+)
+
+
+scale_color_soa <- function (...) {
+    scale_color_manual(values = soa_colors, ...)
+}
+
+prep <- function(dat) {
+    dat %>%
+        group_by(cal_date, .add = TRUE) %>%
+        summarize(Cases = sum(tot_cases),
+                  Deaths = sum(tot_deaths),
+                  `Crude Mortality` = sum(tot_deaths) / sum(tot_cases),
+                  `Crude Infection Rate` = sum(tot_cases) / sum(Population),
+                  .groups = "drop") %>%
+        pivot_longer(c("Cases", "Deaths", 
+                       "Crude Mortality", "Crude Infection Rate"), 
+                     names_to = "metric", 
+                     values_to = "value") %>% 
+        drop_na(value)
+}
+
+```
+
+```{r highlevel-stats}
+total_infections <- sum(dat$cases)
+total_deaths <- sum(dat$deaths)
+total_population <- dat %>% filter(cal_date == max(cal_date)) %>% 
+  pull(Population) %>% sum()
+infection_rate <- total_infections / total_population
+fatality_rate <- total_deaths / total_infections
+```
+
+Row {data-height = 200}
+-----------------
+
+### Total infections
+
+```{r}
+valueBox(scales::comma(total_infections), caption = "Total infections")
+```
+
+### Total deaths
+
+```{r}
+valueBox(scales::comma(total_deaths))
+```
+
+###  Infection rate
+
+```{r}
+valueBox(scales::percent(infection_rate, accuracy = 0.1))
+```
+
+### Case fatality rate
+```{r}
+valueBox(scales::percent(fatality_rate, accuracy = 0.1))
+```
+
+Aggregate Plots
+====================
+
+Row
+------------------------------
+
+### USA Cases and Deaths
+
+```{r counts-all, fig.dim=c(10, 5)}
+
+dat_all <- prep(dat)
+
+dat_all %>%
+    filter(metric %in% c("Cases", "Deaths")) %>% 
+    ggplot(aes(cal_date, value)) +
+    geom_line(lwd = 1.05) +
+    scale_y_continuous(labels = scales::comma) +
+    facet_wrap(~ metric, scales = "free_y") + 
+    labs(x = "Date", y = "Count")
+
+```
+
+Row
+------------------------------
+
+
+### USA Infection and Mortality Rates
+
+```{r rates-all, fig.dim=c(10, 5)}
+
+dat_all %>%
+    filter(str_detect(metric, "^Crude")) %>% 
+    ggplot(aes(cal_date, value)) +
+    geom_line(lwd = 0.9) +
+    scale_y_continuous(labels = scales::percent) +
+    facet_wrap(~ metric, scales = "free_y") + 
+    labs(x = "Date", y = "Cumulative Rate")
+
+```
+
+
+State Plots
+==============================
+
+Row
+------------------------------
+
+### State Cases and Deaths
+
+```{r counts-states, fig.dim=c(10, 5)}
+
+dat_state <- dat %>% group_by(State) %>% prep()
+
+dat_state %>%
+    filter(metric %in% c("Cases", "Deaths")) %>% 
+    ggplot(aes(cal_date, value, color = State, group = State)) +
+    geom_line(size = 1.1) +
+    gghighlight(max(value), max_highlight = 6, 
+                calculate_per_facet = TRUE, 
+                unhighlighted_params = list(size = 0.9, alpha = 0.5)) + 
+    scale_y_continuous(labels = scales::comma) +
+    facet_wrap(~ metric, scales = "free_y") + 
+    labs(x = "Date", y = "Count") + 
+    scale_color_soa()
+
+```
+
+Row
+------------------------------
+
+
+### State Infection and Fatality Rates
+
+```{r rates-states, fig.dim=c(10, 5)}
+
+dat_state %>%
+    filter(str_detect(metric, "^Crude")) %>% 
+    ggplot(aes(cal_date, value, color = State)) +
+    geom_line(lwd = 1.1) +
+    gghighlight(max(mean(value)), max_highlight = 6, 
+                calculate_per_facet = TRUE, 
+                unhighlighted_params = list(size = 0.9, alpha = 0.5)) + 
+    scale_y_continuous(labels = scales::percent) +
+    facet_wrap(~ metric, scales = "free_y") + 
+    labs(x = "Date", y = "Cumulative Rate") + 
+    scale_color_soa()
+
+```
+
+
+County Level Map 
+========================================
+
+```{r us-map}
+
+library(leaflet)
+
+
+
+# filter down to last date and add infection rate
+dat2 <- dat %>% filter(cal_date == max(cal_date), Lat != 0, Lat != 0) %>% 
+  mutate(infection = round(tot_cases / Population * 100, 2),
+         mortality = round(tot_deaths / tot_cases * 100, 2))
+
+# set up viridis color scale linked to infection rate
+bins <- quantile(dat2$infection, probs = seq(0, 1, by = 0.1))
+pal <- colorBin(viridis::viridis(length(bins)), 
+                domain = dat2$infection, bins = bins)
+
+
+# get county-level map
+if (params$states[[1]] == "All") {
+  us_map <- maps::map("county", fill = TRUE, plot = FALSE)
+} else {
+  us_map <- maps::map("county", region = params$states, 
+                      fill = TRUE, plot = FALSE)
+}
+
+# synch up county names manually
+dat2$other <- str_glue("{str_to_lower(dat2$State)},{str_to_lower(dat2$County)}") %>% 
+  str_remove("\\.") %>% str_replace(",(\\D{2}) ", ",\\1") %>% str_remove("'")
+us_map$names <- str_replace(us_map$names, ",(\\D{2}) ", ",\\1") %>% 
+  str_remove("'") %>% str_remove(":.*") %>% str_remove(" national$")
+us_map$names[us_map$names == "south dakota,shannon"] <- "south dakota,oglala lakota"
+
+
+features <- tibble(other = us_map$names) %>% 
+  left_join(select(dat2, other, Combined_Key, 
+                   infection, tot_cases, tot_deaths, mortality), 
+            by = "other") %>% 
+  mutate(Combined_Key = str_remove(Combined_Key, ", US$"))
+
+us_map$infection <- features$infection
+us_map$tot_cases <- features$tot_cases
+us_map$tot_deaths <- features$tot_deaths
+us_map$mortality <- features$mortality
+us_map$names <- features$Combined_Key
+
+leaflet(us_map, 
+        options = leafletOptions(minZoom = 4, maxZoom = 9)) %>% 
+  addTiles() %>% 
+  addPolygons(fillColor = ~pal(infection), color = "#888888", fillOpacity = 0.7,
+              popup = ~ paste0(names, "<br/>Cases: ", tot_cases,
+                               "<br/>Deaths: ", tot_deaths,
+                               "<br/>Infection Rate: ", infection, "%",
+                               "<br/>Fatality Rate: ", mortality, "%"),
+              weight = 1) %>% 
+  addLegend(pal = pal, values = ~infection, opacity = 0.7,
+            position = "bottomright",
+            title = "Infection Rate")
+
+```
+
