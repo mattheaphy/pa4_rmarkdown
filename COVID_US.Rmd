@@ -34,7 +34,24 @@ library(gghighlight)
 # if you don't have a copy of this file, run the script "download_cleanup.R"
 dat <- readRDS("covid19-us.rds")
 
-if (params$states[[1]] != "All") dat <- filter(dat, State %in% params$states)
+
+# set up color scale for county-level map. important to do this prior to 
+# state-level filtering to ensure a consistent color scheme
+# filter down to last date and add infection rate
+dat2 <- dat %>% filter(cal_date == max(cal_date), Lat != 0, Lat != 0) %>% 
+  mutate(infection = round(tot_cases / Population * 100, 2),
+         mortality = round(tot_deaths / tot_cases * 100, 2))
+
+# set up viridis color scale linked to infection rate
+bins <- quantile(dat2$infection, probs = seq(0, 1, by = 0.1))
+pal <- colorBin(viridis::viridis(length(bins)), 
+                  domain = dat2$infection, bins = bins)
+
+
+if (params$states[[1]] != "All") {
+  dat <- filter(dat, State %in% params$states)
+  dat2 <- filter(dat2, State %in% params$states)
+}
 
 # color theme
 soa_colors <- rgb(
@@ -180,17 +197,6 @@ if (all(params$states %in% c("Alaska", "Hawaii"))) {
 } else {
   
   library(leaflet)
-  
-  # filter down to last date and add infection rate
-  dat2 <- dat %>% filter(cal_date == max(cal_date), Lat != 0, Lat != 0) %>% 
-    mutate(infection = round(tot_cases / Population * 100, 2),
-           mortality = round(tot_deaths / tot_cases * 100, 2))
-  
-  # set up viridis color scale linked to infection rate
-  bins <- quantile(dat2$infection, probs = seq(0, 1, by = 0.1))
-  pal <- colorBin(viridis::viridis(length(bins)), 
-                  domain = dat2$infection, bins = bins)
-  
   
   # get county-level map
   if (params$states[[1]] == "All") {
