@@ -34,7 +34,7 @@ col.info <- cols(
     iso2 = col_factor(),
     iso3 = col_factor(),
     iso3 = col_factor(),
-    FIPS = col_integer(),
+    FIPS = col_number(),
     Admin2 = col_character(),
     Province_State = col_character(),
     Country_Region = col_factor(),
@@ -74,7 +74,8 @@ dat <- left_join(cases, deaths) %>%
            County = Admin2,
            Lon = Long_) %>%     
     mutate(cases = tot_cases - lag(tot_cases, default = 0),
-           deaths = tot_deaths - lag(tot_deaths, default = 0)) %>% 
+           deaths = tot_deaths - lag(tot_deaths, default = 0),
+           FIPS = str_pad(FIPS, width = 5, side = "left", pad = "0")) %>% 
     ungroup()
 
 # save results to an RDS file
