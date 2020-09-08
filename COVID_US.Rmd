@@ -29,6 +29,7 @@ knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE,
 library(tidyverse)
 library(lubridate)
 library(gghighlight)
+library(leaflet)
 
 # read in data
 # if you don't have a copy of this file, run the script "download_cleanup.R"
@@ -195,8 +196,6 @@ if (all(params$states %in% c("Alaska", "Hawaii"))) {
   "The `maps` package used in this illustrative example doesn't include county-level detail on Alaska and Hawaii. This package was selected because it has small shape files that do not take long to render. Other packages like tigris include county-level shape files for all states with a higher level of detail."
   
 } else {
-  
-  library(leaflet)
   
   # get county-level map
   if (params$states[[1]] == "All") {
