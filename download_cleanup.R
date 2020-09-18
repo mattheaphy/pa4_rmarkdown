@@ -27,6 +27,7 @@ require(readr)
 require(dplyr)
 require(tidyr)
 require(lubridate)
+require(stringr)
 
 col.info <- cols(
     .default = col_double(),
