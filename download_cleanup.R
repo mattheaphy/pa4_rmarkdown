@@ -27,6 +27,7 @@ require(readr)
 require(dplyr)
 require(tidyr)
 require(lubridate)
+require(stringr)
 
 col.info <- cols(
     .default = col_double(),
@@ -65,10 +66,11 @@ piv <- function(x, lbl) {
 }
 
 cases <- piv(cases, "tot_cases")
-deaths <- piv(deaths, "tot_deaths")
+deaths <- piv(deaths, "tot_deaths") %>% select(-Admin2, -Province_State, 
+                                               -Lat, -Long_)
 
 # combine tidy data into one table
-dat <- left_join(cases, deaths) %>% 
+dat <- left_join(cases, deaths, by = c("FIPS", "Combined_Key", "cal_date")) %>% 
     group_by(Combined_Key) %>% 
     rename(State = Province_State,
            County = Admin2,

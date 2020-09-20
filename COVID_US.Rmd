@@ -10,7 +10,7 @@ output:
 params:
     states: "All"
 editor_options: 
-  chunk_output_type: console
+  chunk_output_type: inline
 ---
 
 > Data from the COVID-19 Data Repository by the Center for Systems Science and 
